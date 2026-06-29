@@ -1,0 +1,4 @@
+interface:
+  display_name: "Database Design Mermaid"
+  short_description: "Design database schemas as Mermaid diagrams."
+  default_prompt: "Design a database schema as a Mermaid diagram."

@@ -1,0 +1,12 @@
+{
+  "name": "coding-crew",
+  "displayName": "Coding Crew",
+  "description": "A greeting plugin to learn the basics",
+  "version": "1.0.0",
+  "author": {
+    "name": "Zeel Thumar"
+  },
+  "agents": "./agents/",
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json"
+}

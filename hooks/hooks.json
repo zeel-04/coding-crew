@@ -1,0 +1,39 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/ruff-fix.sh",
+            "if": "Edit(*.py)|Write(*.py)|MultiEdit(*.py)",
+            "statusMessage": "Running ruff (lint + format)…",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pyrefly-check.sh",
+            "if": "Edit(*.py)|Write(*.py)|MultiEdit(*.py)",
+            "statusMessage": "Running pyrefly (type check)…",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/eslint-prettier-fix.sh",
+            "if": "Edit(*.ts)|Edit(*.tsx)|Edit(*.js)|Edit(*.jsx)|Write(*.ts)|Write(*.tsx)|Write(*.js)|Write(*.jsx)|MultiEdit(*.ts)|MultiEdit(*.tsx)|MultiEdit(*.js)|MultiEdit(*.jsx)",
+            "statusMessage": "Running eslint + prettier (lint + format)…",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/tsc-check.sh",
+            "if": "Edit(*.ts)|Edit(*.tsx)|Write(*.ts)|Write(*.tsx)|MultiEdit(*.ts)|MultiEdit(*.tsx)",
+            "statusMessage": "Running tsc (type check)…",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
