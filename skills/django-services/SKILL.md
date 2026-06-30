@@ -1,6 +1,6 @@
 ---
 name: django-services
-description: Use when creating, editing, or reviewing a Django services.py or selectors.py file. Enforces this project's service-layer conventions — class-based services, naming, transactions, and the push (service) vs. pull (selector) split.
+description: Use when creating, editing, or reviewing files in services/ or selectors.py. Enforces this project's service-layer conventions — class-based services in services/<entity>_services.py, naming, transactions, and the push (service) vs. pull (selector) split.
 ---
 
 Services own business logic. Selectors own reads. Keep both decoupled from views and from each other's responsibilities.
@@ -11,7 +11,7 @@ Never write a function-based service. Use plain functions only for private helpe
 
 A service class:
 
-- Lives in `<app>/services.py` (or a `services/` package once it grows — see Modules below).
+- Lives in `services/<entity>_services.py` (e.g. `services/employee_services.py`).
 - Takes shared dependencies in `__init__` when multiple methods need them.
 - Uses keyword-only arguments on public methods that take more than one input.
 - Wraps DB-writing methods in `@transaction.atomic`.
@@ -52,7 +52,7 @@ class FileDirectUploadService:
 
 ## Selectors are function-based
 
-Selectors are the read-only counterpart to services. They live in `<app>/selectors.py`, stay type-annotated, and have no side effects.
+Selectors are the read-only counterpart to services. They live in `<app>/selectors.py` (a single flat file), stay type-annotated, and have no side effects.
 
 ```python
 def user_list(*, fetched_by: User) -> Iterable[User]:
@@ -64,13 +64,21 @@ Decision rule: if the code **writes** to the DB, dispatches a task, or calls an 
 
 ## Modules
 
-Keep `services.py` / `selectors.py` as single files while the app is small. Split into a package once it covers multiple sub-domains:
+`services/` is always a folder — one file per entity or domain, named `<entity_or_domain>_services.py`:
 
 ```
 services/
-├── __init__.py   # re-export classes so callers import from `app.services`
-├── jwt.py
-└── oauth.py
+├── __init__.py          # empty
+├── employee_services.py
+└── course_services.py
 ```
 
-Whichever shape you pick, keep it consistent across the project — don't mix flat files and packages between apps without a reason.
+## Naming when multiple entities are involved
+
+Ask: **"What concept is this file responsible for?"**
+
+**One primary entity, other entities are dependencies** — name by the primary entity. A service that enrolls an `Employee` into a `Course` acts on `Employee`; `Course` is just an input. Use `employee_services.py`.
+
+**No single dominant entity — a domain or workflow** — name by the domain concept, not any one entity. `Payroll`, `Onboarding`, and `Reporting` span multiple entities with no clear primary; use `payroll_services.py`, `onboarding_services.py`, `reporting_services.py`.
+
+Avoid compound entity names like `employee_course_services.py`. That name is a signal to either identify the primary entity (Case 1) or find the right domain abstraction (Case 2).

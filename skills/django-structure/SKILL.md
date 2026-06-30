@@ -1,6 +1,6 @@
 ---
 name: django-structure
-description: Use when scaffolding a new Django app, deciding where a piece of code belongs, or reviewing an app's file layout. Defines this project's app structure — what each file owns, when a file becomes a folder, and the conventions for schema.py, types.py, and permissions.py.
+description: Use when scaffolding a new Django app, deciding where a piece of code belongs, or reviewing an app's file layout. Defines this project's app structure — what each file owns, the folder conventions for views/, serializers/, and services/, and the conventions for schema.py, types.py, and permissions.py.
 ---
 
 Every Django app follows the same layout. This skill is the map; the per-layer rules live in [[django-models]], [[django-services]], [[django-apis]], [[django-errors]], and [[django-testing]].
@@ -20,10 +20,10 @@ api/
     ├── apps.py
     ├── models.py           # data model only — [[django-models]]
     ├── selectors.py        # read-only fetch/filter functions — [[django-services]]
-    ├── services.py         # business logic — [[django-services]]
-    ├── views.py            # request/response only, no business logic — [[django-apis]]
-    ├── serializers.py      # DRF Input/Output serializers — [[django-apis]]
-    ├── urls.py             # one URL per API — [[django-apis]]
+    ├── services/           # business logic, one file per entity — [[django-services]]
+    ├── views/              # request/response only, no business logic — [[django-apis]]
+    ├── serializers/        # per-action Input/Output serializers, one file per entity — [[django-apis]]
+    ├── urls.py             # Router-registered ViewSets — [[django-apis]]
     ├── schema.py           # internal DTOs (see below)
     ├── types.py            # type aliases, Literal, TypedDict, Enum (see below)
     ├── exceptions.py       # app-specific ApplicationError subclasses — [[django-errors]]
@@ -32,18 +32,28 @@ api/
 
 Authorization is project-wide, so `permissions.py` lives once at the `api/` level — not inside each app.
 
-## File becomes a folder when it grows
+## Folder structure and file naming
 
-`views.py`, `serializers.py`, `services.py`, and `selectors.py` can each split into a package once the app outgrows a single file:
+`views/`, `serializers/`, and `services/` are always folders — never single flat files. Each folder contains one file per entity, named with the entity first and the layer as a suffix:
 
 ```
+views/
+├── __init__.py    # empty
+├── employee_view.py
+└── course_view.py
+
+serializers/
+├── __init__.py    # empty
+├── employee_serializers.py
+└── course_serializers.py
+
 services/
-├── __init__.py    # re-export so callers still import from `<app>.services`
-├── jwt.py
-└── oauth.py
+├── __init__.py
+├── employee_services.py
+└── course_services.py
 ```
 
-Split by sub-domain, keep imports stable via `__init__.py`, and stay consistent across apps. See [[django-services]] for the service-module split in detail.
+`selectors.py` stays a single flat file. See [[django-services]] for selector conventions.
 
 ## schema.py — internal DTOs
 
@@ -62,7 +72,7 @@ class EnrollmentResult:
     seats_remaining: int
 ```
 
-This is distinct from DRF serializers, which live in the API layer and own the HTTP request/response contract — see [[django-apis]]. Serializers face the wire; schema DTOs face the rest of the app.
+This is distinct from DRF serializers, which live in `serializers/` in the API layer and own the HTTP request/response contract — see [[django-apis]]. Serializers face the wire; schema DTOs face the rest of the app.
 
 ## types.py — app-scoped type vocabulary
 
@@ -100,7 +110,7 @@ class IsCourseOwner(BasePermission):
 # in an app's view
 from api.permissions import IsCourseOwner
 
-class CourseUpdateApi(APIView):
+class CourseViewSet(ViewSet):
     permission_classes = [IsCourseOwner]
 ```
 

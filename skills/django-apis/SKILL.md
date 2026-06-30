@@ -1,62 +1,77 @@
 ---
 name: django-apis
-description: Use when creating, editing, or reviewing Django views.py, serializers.py, or urls.py. Enforces this project's API-layer conventions — thin views with no business logic, nested Input/Output serializers, naming, and URL structure.
+description: Use when creating, editing, or reviewing files in views/, serializers/, or urls.py. Enforces this project's API-layer conventions — thin ViewSets with no business logic, per-action serializers in serializers/<entity>_serializers.py, naming, and Router-based URL registration.
 ---
 
 APIs are a thin interface onto services and selectors. They parse input, fetch objects, call a service/selector, and serialize output — nothing else.
 
 ## Views
 
-- One API per operation. CRUD on a model is 4 APIs, not one viewset.
-- Inherit from plain `APIView`, not the more abstract generic views — those pull behavior into serializers, and business behavior belongs in services/selectors.
-- **No business logic in the view.** If parsing gets non-trivial, extract a small helper near the API — don't let it grow into logic.
+- One `ViewSet` per resource. Actions (`list`, `create`, `retrieve`, `update`, `destroy`) are explicit methods on the class.
+- Inherit from plain `ViewSet`, not `ModelViewSet` or `GenericViewSet` — those pull behavior into `serializer_class`, and business behavior belongs in services/selectors.
+- **No business logic in the view.** If parsing gets non-trivial, extract a small helper near the ViewSet — don't let it grow into logic.
 
-Naming: `<Entity><Action>Api` — e.g. `UserCreateApi`, `UserDeactivateApi`, `CourseListApi`.
+Naming: `<Entity>ViewSet` — e.g. `CourseViewSet`.
 
 ```python
-class CourseCreateApi(SomeAuthenticationMixin, APIView):
-    class InputSerializer(serializers.Serializer):
-        name = serializers.CharField()
-        start_date = serializers.DateField()
-        end_date = serializers.DateField()
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.viewsets import ViewSet
 
-    def post(self, request):
-        serializer = self.InputSerializer(data=request.data)
+from .selectors import course_list
+from .serializers.course_serializers import (
+    CourseCreateInputSerializer,
+    CourseListFilterSerializer,
+    CourseListOutputSerializer,
+)
+from .services.course_services import CourseCreateService
+
+class CourseViewSet(SomeAuthenticationMixin, ViewSet):
+    def list(self, request):
+        filter_serializer = CourseListFilterSerializer(data=request.query_params)
+        filter_serializer.is_valid(raise_exception=True)
+
+        courses = course_list(filters=filter_serializer.validated_data)
+        return Response(CourseListOutputSerializer(courses, many=True).data)
+
+    def create(self, request):
+        serializer = CourseCreateInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         CourseCreateService().execute(**serializer.validated_data)
-
         return Response(status=status.HTTP_201_CREATED)
 ```
 
 ## Serializers
 
+- Define serializers in `serializers/<entity>_serializers.py` — never nest them inside the ViewSet class.
 - Always a dedicated `InputSerializer` for incoming data and `OutputSerializer` for outgoing data — never reuse one serializer for both directions.
-- Nest them inside the API class. Add `FilterSerializer` for list-endpoint query params.
+- Add a `FilterSerializer` for list-endpoint query params.
+- Each action gets its own serializer class — never reuse serializers across actions. A shared serializer changing under you is a silent breaking change.
 - Prefer plain `Serializer` over `ModelSerializer` — API contracts shouldn't drift silently when the model changes.
-- Reuse serializers across APIs as little as possible; a shared serializer changing under you is a silent breaking change.
+
+Naming: `<Entity><Action>InputSerializer`, `<Entity><Action>OutputSerializer`, `<Entity><Action>FilterSerializer` — e.g. `CourseCreateInputSerializer`, `CourseListOutputSerializer`, `CourseListFilterSerializer`.
 
 ```python
-class CourseListApi(APIView):
-    class FilterSerializer(serializers.Serializer):
-        is_admin = serializers.NullBooleanField(required=False)
+# serializers/course_serializers.py
+from rest_framework import serializers
 
-    class OutputSerializer(serializers.Serializer):
-        id = serializers.CharField()
-        name = serializers.CharField()
+class CourseListFilterSerializer(serializers.Serializer):
+    is_admin = serializers.NullBooleanField(required=False)
 
-    def get(self, request):
-        filters_serializer = self.FilterSerializer(data=request.query_params)
-        filters_serializer.is_valid(raise_exception=True)
+class CourseListOutputSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    name = serializers.CharField()
 
-        courses = course_list(filters=filters_serializer.validated_data)
-
-        return Response(self.OutputSerializer(courses, many=True).data)
+class CourseCreateInputSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
 ```
 
 ## Fetching objects
 
-Default: fetch the object at the API level (not inside the service/selector) using a small `get_object` helper that turns `Http404` into `None`:
+Default: fetch the object at the ViewSet level (not inside the service/selector) using a small `get_object` helper that turns `Http404` into `None`:
 
 ```python
 def get_object(model_or_queryset, **kwargs):
@@ -66,22 +81,20 @@ def get_object(model_or_queryset, **kwargs):
         return None
 ```
 
-Pick one approach per project (API fetches and passes the object, vs. service/selector fetches by id) and stay consistent — don't mix both within the same app.
+Pick one approach per project (ViewSet fetches and passes the object, vs. service/selector fetches by id) and stay consistent — don't mix both within the same app.
 
 ## URLs
 
-- One URL per API — same 1:1 mapping as APIs to operations.
-- Group a domain's URLs into its own `<domain>_patterns` list, then `include()` it from `urlpatterns`.
+Register ViewSets with `SimpleRouter` — one router registration per resource. Prefer `SimpleRouter` over `DefaultRouter` (no extra API root endpoint).
 
 ```python
-course_patterns = [
-    path('', CourseListApi.as_view(), name='list'),
-    path('<int:course_id>/', CourseDetailApi.as_view(), name='detail'),
-    path('create/', CourseCreateApi.as_view(), name='create'),
-    path('<int:course_id>/update/', CourseUpdateApi.as_view(), name='update'),
-]
+# urls.py
+from rest_framework.routers import SimpleRouter
+from .views.course_view import CourseViewSet
 
-urlpatterns = [
-    path('courses/', include((course_patterns, 'courses'))),
-]
+router = SimpleRouter()
+router.register('courses', CourseViewSet, basename='courses')
+urlpatterns = router.urls
 ```
+
+Group a domain's router into its own `urls.py`, then `include()` it from the project `urlpatterns` as before.

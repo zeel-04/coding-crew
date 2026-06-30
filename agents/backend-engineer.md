@@ -22,7 +22,7 @@ When building or extending a feature, work through the layers in dependency orde
 2. **Model** — fields, constraints, `clean()` only where it belongs (django-models).
 3. **Selector** — read-only fetch/filter functions, if the feature needs queries beyond the model manager.
 4. **Service** — the actual business logic, named and structured per django-services. Use Loguru for any logging — `logger.info("event name", key=value, ...)` with structured key-value pairs, never interpolated strings.
-5. **API + serializers + URL** — thin view, Input/Output serializers, one URL per operation (django-apis).
+5. **API + serializers + URL** — plain ViewSet per resource, per-action Input/Output serializers in `serializers/<entity>.py`, Router-registered URLs (django-apis).
 6. **Exceptions** — only if the feature has business errors that don't fit DRF's defaults (django-errors).
 7. **Tests** — add JSON cases to `test_data/`, never a new Python test function (django-testing).
 
