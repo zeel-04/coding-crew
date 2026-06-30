@@ -1,0 +1,23 @@
+{
+  "name": "coding-crew",
+  "version": "1.0.0",
+  "description": "A collection of coding skills for project structure, testing, API layers, and design workflows.",
+  "author": {
+    "name": "Zeel Thumar"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Coding Crew",
+    "shortDescription": "Coding workflow skills for Codex.",
+    "longDescription": "Coding Crew bundles focused skills for Django, frontend API layers, database design, design systems, testing, and implementation patterns.",
+    "developerName": "Zeel Thumar",
+    "category": "Productivity",
+    "capabilities": ["Write", "Review", "Analyze"],
+    "defaultPrompt": [
+      "Use Coding Crew to review this implementation.",
+      "Help design the database for this feature.",
+      "Guide this Django API change."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

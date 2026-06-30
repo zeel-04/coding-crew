@@ -1,7 +1,7 @@
 {
   "name": "coding-crew",
   "displayName": "Coding Crew",
-  "description": "A greeting plugin to learn the basics",
+  "description": "A collection of coding skills for project structure, testing, API layers, and design workflows.",
   "version": "1.0.0",
   "author": {
     "name": "Zeel Thumar"
