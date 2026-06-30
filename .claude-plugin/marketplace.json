@@ -1,0 +1,21 @@
+{
+  "name": "coding-crew",
+  "owner": {
+    "name": "Zeel Thumar"
+  },
+  "description": "Coding workflow plugins and skills for Claude Code.",
+  "plugins": [
+    {
+      "name": "coding-crew",
+      "source": "./",
+      "displayName": "Coding Crew",
+      "description": "A collection of coding skills for project structure, testing, API layers, and design workflows.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Zeel Thumar"
+      },
+      "category": "Productivity",
+      "tags": ["django", "frontend", "testing", "database-design"]
+    }
+  ]
+}
