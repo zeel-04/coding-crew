@@ -17,3 +17,19 @@ Or from the command line:
 claude plugin marketplace add zeel-04/coding-crew
 claude plugin install coding-crew@coding-crew
 ```
+
+## Updating
+
+Refresh the marketplace listing and update the plugin to the latest version:
+
+```bash
+/plugin marketplace update coding-crew
+/plugin update coding-crew@coding-crew
+```
+
+Or from the command line:
+
+```bash
+claude plugin marketplace update coding-crew
+claude plugin update coding-crew@coding-crew
+```

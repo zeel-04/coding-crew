@@ -74,20 +74,3 @@ def is_within(self, x: date) -> bool:
 ```
 
 If a property/method needs to join, filter, or hit the DB beyond `self`, it does not belong on the model — write a selector or service function instead.
-
-## Testing
-
-Only write model tests when the model has actual behavior: `clean()`, properties, or methods. A model with only field declarations needs no test.
-
-```python
-class CourseTests(TestCase):
-    def test_course_end_date_cannot_be_before_start_date(self):
-        course = Course(
-            start_date=timezone.now(),
-            end_date=timezone.now() - timedelta(days=1),
-        )
-        with self.assertRaises(ValidationError):
-            course.full_clean()
-```
-
-Prefer asserting via `full_clean()` without saving — no DB hit needed for pure validation logic.
