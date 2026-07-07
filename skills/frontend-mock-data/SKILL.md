@@ -3,7 +3,7 @@ name: frontend-mock-data
 description: Use when building or reviewing a UI/UX prototype's data layer — lib/api/client.ts, lib/api/<module>.ts, lib/hooks/use-<module>.ts, or lib/mocks/<module>.json — where there is no real backend and all data comes from local JSON fixtures.
 ---
 
-The prototype data layer has the same shape as a real backend integration — `types → api → hooks → components` — except `lib/api/<module>.ts` resolves from a local JSON fixture instead of calling a network endpoint. **Never call `fetch`, hit `NEXT_PUBLIC_API_URL`, or add auth headers** — there is no backend to reach.
+The prototype data layer has the same shape as a real backend integration — `types → api → hooks → components` — except `lib/api/<module>.ts` resolves from a local JSON fixture instead of calling a network endpoint. **Never call `fetch`, reach for an API base URL env var, or add auth headers** — there is no backend to reach.
 
 ```
 lib/
@@ -93,7 +93,6 @@ Identical to a real integration — one file per module in `lib/hooks/use-<modul
 
 ```ts
 // lib/hooks/use-users.ts
-'use client'
 import useSWR from 'swr'
 import { getUser } from '@/lib/api/users'
 import type { User } from '@/lib/types/users'
@@ -105,8 +104,9 @@ export function useUser(id: string) {
 
 ## Fetching by component type
 
+This is a plain Vite SPA — every component is a client component, so there's no Server Component split to reason about.
+
 | Context | Pattern |
 |---------|---------|
-| Server Component | Call the `lib/api/<module>.ts` function directly |
-| Client Component (read) | Use the module's hook from `lib/hooks/use-<module>.ts` |
+| Component (read) | Use the module's hook from `lib/hooks/use-<module>.ts` |
 | Mutation | Call the `lib/api/<module>.ts` function from an event handler, then revalidate with SWR `mutate` using the same key the hook uses |
