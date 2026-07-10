@@ -1,149 +1,231 @@
 ---
 name: frontend-api-layer
-description: Use when creating, editing, or reviewing the frontend data layer — lib/api/client.ts, or any module's lib/api/<module>.ts, lib/hooks/use-<module>.ts, or lib/types/<module>.ts file. Enforces this project's frontend-owned API client conventions, fetching patterns per component type, and error handling.
+description: Use when creating, editing, or reviewing the frontend data layer — lib/client.ts, or any feature's lib/features/<feature>/api.ts, schema.ts, or types.ts file. Enforces this project's server-first data conventions — server-only API client, schema-first Zod types, reads in Server Components, mutations via Server Actions, and error handling.
 ---
 
-The frontend data layer talks to the backend through a two-layer API client, with per-module types and SWR-wrapped hooks layered on top. Persistence and HTTP contract ownership live in the backend; the frontend only adapts backend endpoints for UI use. **Never call raw `fetch` from a module or component** — always go through the base client.
+All backend communication happens on the server. Reads run in Server Components through a server-only base client and reach client components as props; mutations run in Server Actions followed by cache revalidation. Zod schemas are the single source of truth for types — every response is validated at runtime, so backend contract drift fails loudly at the network boundary instead of deep in the UI. **Never call raw `fetch` from a feature file or component** — always go through the base client. **Never fetch from a Client Component** — no SWR, no `useEffect` fetching, no hooks layer.
 
 ```
 lib/
-├── api/
-│   ├── client.ts          # base layer — auth, base URL, error handling
-│   ├── auth.ts            # auth endpoint calls
-│   └── orders.ts          # order endpoint calls
-├── hooks/
-│   ├── use-auth.ts
-│   └── use-orders.ts      # useOrder(), useOrderList() — wraps lib/api/orders.ts with SWR
-└── types/
-    ├── auth.ts
-    └── orders.ts          # Order, OrderStatus, OrderTimeline
+├── client.ts                # server-only base layer — session token, base URL, Zod validation, error normalization
+├── dal.ts                   # verifySession() — see the frontend-auth-and-state skill
+└── features/
+    └── departments/
+        ├── schema.ts        # departmentSchema, departmentUpdateSchema — Zod schemas only
+        ├── types.ts         # Department, DepartmentUpdate — z.infer types only
+        └── api.ts           # 'use server' — reads (getDepartment) AND mutation actions
+                             #   (updateDepartmentAction), all through apiFetch
+app/
+└── departments/
+    ├── page.tsx             # Server Component — awaits lib/features/departments/api.ts directly
+    └── loading.tsx          # skeleton for first paint (see design-patterns, Loading states)
 ```
 
-Dependency direction is one-way: `types` → `api` → `hooks` → components. A file never imports from a layer to its right in that chain from within the same module.
+Dependency direction is one-way: `schema.ts` → `types.ts` → `api.ts` → components. `types.ts` is also fine for a component to import directly for prop typing — it pulls in only a type, never the Zod runtime. Central files used by every feature (`client.ts`, `dal.ts`) live directly in `lib/` — anything needed by two or more features graduates there, never duplicated into a feature. Nothing in `lib/` imports from `app/`, and one feature never imports another feature's `api.ts`.
 
-## Base client
+## Schemas
 
-`lib/api/client.ts` is the only file that owns auth headers, the base URL, and error normalization. Anything used by two or more modules graduates into this file — never duplicate it into a module.
+One file per feature in `lib/features/<feature>/schema.ts` — Zod schemas as the source of truth, nothing else. **Never hand-write an interface that mirrors a backend response** — if the shape exists on the wire, it exists as a schema here.
 
 ```ts
-class ApiError extends Error {
+// lib/features/departments/schema.ts
+import { z } from 'zod'
+
+export const departmentSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  managerEmail: z.email(),
+})
+export const departmentUpdateSchema = departmentSchema.omit({ id: true }).partial()
+```
+
+## Types
+
+One file per feature in `lib/features/<feature>/types.ts` — every type derived from the sibling `schema.ts` via `z.infer`, named after the domain concept rather than the schema. Keeping this separate from `schema.ts` means a component that only needs the TS shape (e.g. to type a prop) imports `types.ts` and never drags in the Zod runtime — only server code that actually validates imports `schema.ts`.
+
+```ts
+// lib/features/departments/types.ts
+import type { z } from 'zod'
+import type { departmentSchema, departmentUpdateSchema } from './schema'
+
+export type Department = z.infer<typeof departmentSchema>
+export type DepartmentUpdate = z.infer<typeof departmentUpdateSchema>
+```
+
+## Server-only base client
+
+`lib/client.ts` is the only file that owns the session token, the base URL, response validation, and error normalization. The `'server-only'` import makes bundling it into client code a build error — the backend URL and bearer token never reach the browser.
+
+```ts
+// lib/client.ts
+import 'server-only'
+import { z } from 'zod'
+import { verifySession } from '@/lib/dal'
+
+export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message)
   }
 }
 
-export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${path}`, {
+export async function apiFetch<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  options?: RequestInit,
+): Promise<T> {
+  const { accessToken } = await verifySession()
+  const res = await fetch(`${process.env.API_URL}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${getToken()}`,
+      Authorization: `Bearer ${accessToken}`,
       ...options?.headers,
     },
   })
 
   if (!res.ok) throw new ApiError(res.status, await res.text())
-  return res.json() as Promise<T>
+  return schema.parse(await res.json()) // runtime validation — drift fails loudly, at the seam
 }
 ```
 
-## Module types
+Note `API_URL`, not `NEXT_PUBLIC_API_URL` — the URL is a server secret now. `verifySession()` (from `lib/dal.ts`, see `frontend-auth-and-state`) runs on every call, so the backend's own 401 handling is the last line of defense, never the only one.
 
-One file per module in `lib/types/<module>.ts` — plain type/interface exports only, no runtime logic. This is the base of the dependency chain: it imports from nothing else in the module.
+## Feature API files
+
+One file per feature in `lib/features/<feature>/api.ts`, with `'use server'` at the top. It exports async server functions for that feature's endpoints — reads and mutation actions alike, all through `apiFetch`, typed by the sibling `schema.ts`. Because every export of a `'use server'` file is a network-callable endpoint, **every function must go through `apiFetch`** (which verifies the session) — never export a helper that skips it. Mutation actions additionally `safeParse` their input before touching the backend and revalidate after.
 
 ```ts
-// lib/types/users.ts
-export interface User {
-  id: string
-  name: string
-  email: string
+// lib/features/departments/api.ts
+'use server'
+import { z } from 'zod'
+import { revalidatePath } from 'next/cache'
+import { apiFetch } from '@/lib/client'
+import {
+  departmentSchema,
+  departmentUpdateSchema,
+} from '@/lib/features/departments/schema'
+
+// reads — awaited directly from Server Components
+export async function getDepartment(id: string) {
+  return apiFetch(`/departments/${id}`, departmentSchema)
 }
-```
 
-## Module API files
+export async function listDepartments() {
+  return apiFetch('/departments', z.array(departmentSchema))
+}
 
-One file per module in `lib/api/<module>.ts`, colocated with `client.ts`. Export typed async functions for that module's endpoints — reads and writes alike, all through `apiFetch`, typed against `lib/types/<module>.ts`. Never reuse one module's file from another module; if logic is shared, it belongs in the base client.
+// mutation — bound with useActionState in forms, or startTransition elsewhere
+export type FormState = {
+  errors?: Record<string, string[]>
+  values?: Record<string, string>
+} | null
 
-```ts
-// lib/api/users.ts
-import { apiFetch } from '@/lib/api/client'
-import type { User } from '@/lib/types/users'
-
-export const getUser = (id: string) =>
-  apiFetch<User>(`/users/${id}`)
-
-export const updateUser = (id: string, data: Partial<User>) =>
-  apiFetch<User>(`/users/${id}`, {
+export async function updateDepartmentAction(
+  id: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const raw = Object.fromEntries(formData) as Record<string, string>
+  const parsed = departmentUpdateSchema.safeParse(raw) // actions are public endpoints — never trust the caller
+  if (!parsed.success) {
+    return { errors: z.flattenError(parsed.error).fieldErrors, values: raw }
+  }
+  await apiFetch(`/departments/${id}`, departmentSchema, {
     method: 'PATCH',
-    body: JSON.stringify(data),
+    body: JSON.stringify(parsed.data),
   })
-```
-
-## Module hooks
-
-One file per module in `lib/hooks/use-<module>.ts`, always a `'use client'` file. Export one [SWR](https://swr.vercel.app/)-wrapped hook per query shape (e.g. `useUser(id)`, `useUserList()`); each hook is a thin `useSWR` call keyed on the endpoint path, using the matching `lib/api/<module>.ts` function as the fetcher.
-
-```ts
-// lib/hooks/use-users.ts
-'use client'
-import useSWR from 'swr'
-import { getUser } from '@/lib/api/users'
-import type { User } from '@/lib/types/users'
-
-export function useUser(id: string) {
-  return useSWR<User>(`/users/${id}`, () => getUser(id))
+  revalidatePath(`/departments/${id}`)
+  return null
 }
 ```
 
-## Fetching by component type
+An action that needs identity or role checks beyond "logged in" calls `verifySession()` explicitly as its first line.
+
+## Fetching and mutating by context
 
 | Context | Pattern |
 |---------|---------|
-| Server Component | Call the `lib/api/<module>.ts` function directly — no hook, no `useEffect` |
-| Client Component (read) | Use the module's hook from `lib/hooks/use-<module>.ts` |
-| Mutation | Call the `lib/api/<module>.ts` function from an event handler, then revalidate with SWR `mutate` using the same key the hook uses |
+| Server Component (read) | `await` the feature's `api.ts` function directly; slow branches behind Suspense / `loading.tsx` skeleton |
+| Client Component (read) | Never fetches — receives server data as props |
+| Form mutation | Server Action from the feature's `api.ts`, bound with `useActionState` |
+| Non-form mutation (delete, toggle, reorder) | Same Server Action, invoked via `startTransition` from the event handler |
+| After any mutation | `revalidatePath`/`revalidateTag` inside the action — never a client-side refetch |
+| Filters / pagination / search | URL `searchParams`, not client state — see `frontend-auth-and-state` |
 
-**Server Component (reads)**
+## Reads — Server Components
 
 ```tsx
-// app/users/[id]/page.tsx
-import { getUser } from '@/lib/api/users'
+// app/departments/[id]/page.tsx
+import { getDepartment } from '@/lib/features/departments/api'
 
-export default async function UserPage({ params }: { params: { id: string } }) {
-  const user = await getUser(params.id)
-  return <UserProfile user={user} />
+export default async function DepartmentPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const department = await getDepartment(id)
+  return <DepartmentDetail department={department} />
 }
 ```
 
-**Client Component (interactive reads)**
+While the server fetch runs, `loading.tsx` (or a `<Suspense>` boundary) shows a skeleton mirroring the populated layout — the first-paint rule in `design-patterns`, Loading states.
 
-```tsx
-'use client'
-import { useUser } from '@/lib/hooks/use-users'
+## Mutations — Server Actions
 
-export function UserCard({ id }: { id: string }) {
-  const { data, error, isLoading } = useUser(id)
-  // ...
-}
-```
-
-**Mutation**
+**Form mutation** — bind the action with `useActionState`; `pending` drives the submit button, returned `errors` fill the inline slots, and returned `values` are echoed back through `defaultValue` so nothing the user typed is lost:
 
 ```tsx
 'use client'
-import { useSWRConfig } from 'swr'
-import { updateUser } from '@/lib/api/users'
+import { useActionState } from 'react'
+import { updateDepartmentAction } from '@/lib/features/departments/api'
+import type { Department } from '@/lib/features/departments/types'
 
-export function EditUser({ id }: { id: string }) {
-  const { mutate } = useSWRConfig()
+export function EditDepartmentForm({ department }: { department: Department }) {
+  const [state, formAction, pending] = useActionState(
+    updateDepartmentAction.bind(null, department.id),
+    null,
+  )
 
-  async function save(data: Partial<User>) {
-    await updateUser(id, data)
-    mutate(`/users/${id}`) // must match the key used in useUser()
-  }
-  // ...
+  return (
+    <form action={formAction}>
+      <Input
+        name="name"
+        defaultValue={state?.values?.name ?? department.name}
+        aria-describedby="name-error"
+      />
+      {state?.errors?.name && (
+        <p id="name-error" className="text-xs text-destructive">{state.errors.name[0]}</p>
+      )}
+      <Button type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save'}</Button>
+    </form>
+  )
 }
 ```
+
+**Non-form mutation** — same action, invoked through `useTransition`:
+
+```tsx
+'use client'
+import { useTransition } from 'react'
+import { deleteDepartmentAction } from '@/lib/features/departments/api'
+
+export function DeleteDepartmentButton({ id }: { id: string }) {
+  const [pending, startTransition] = useTransition()
+
+  return (
+    <Button
+      variant="destructive"
+      disabled={pending}
+      onClick={() => startTransition(() => deleteDepartmentAction(id))}
+    >
+      Delete
+    </Button>
+  )
+}
+```
+
+The `revalidatePath`/`revalidateTag` call inside the action refreshes every Server Component that rendered the data — there is no client cache to reconcile.
+
+## Forms
+
+Form mechanics live here (`useActionState` + Server Action + server-side `safeParse`); form UX — field anatomy, validation timing, submit-button states — lives in `design-patterns`, Forms. Client-side Zod (directly or via react-hook-form as the client layer) may give instant on-blur feedback, but the Server Action re-validates with `safeParse` regardless — client validation is UX, server validation is the contract.
 
 ## Error handling
 
@@ -151,7 +233,7 @@ Catch `ApiError` only at the call site that can meaningfully respond to a specif
 
 ```ts
 try {
-  await updateUser(id, data)
+  return await getDepartment(id)
 } catch (err) {
   if (err instanceof ApiError && err.status === 404) {
     notFound()
@@ -160,4 +242,10 @@ try {
 }
 ```
 
-Never swallow an error silently. If there is no recoverable path at the call site, let it propagate to the nearest `error.tsx` boundary.
+- **Never swallow an error silently.** With no recoverable path at the call site, let it propagate to the nearest `error.tsx` boundary.
+- **A `ZodError` from `schema.parse` means the backend contract drifted.** Let it hit `error.tsx` and fix the schema — never `.catch` it into a default value.
+- **Inside Server Actions**, expected failures (validation, a 4xx you can name) return typed state; unexpected ones throw.
+
+## Toward generated types
+
+Hand-maintained Zod schemas are the interim state — they make backend drift loud, but they are still mirrors kept in sync by hand. The target is generating them from the Django OpenAPI schema (drf-spectacular on the backend, `openapi-typescript` or a Zod-emitting generator on the frontend), so the backend contract becomes the literal source of truth. Until then, a schema change on the backend means a matching edit in `schema.ts` — caught at runtime by `apiFetch` if missed.

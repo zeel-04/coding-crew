@@ -71,18 +71,20 @@ Pin only when losing the element forces the user to scroll back for **reachabili
 6. **Mark required, not optional.** One `*` or `(required)` suffix style; don't mark everything `(optional)`.
 7. **Let users submit.** Don't disable submit on validity alone — accept it and surface failing fields. (Independent of the dirty-state gate on sticky Save buttons — see Sticky elements.)
 
+Forms submit through a Server Action bound with `useActionState` — see `frontend-api-layer` for the action anatomy. Client-side Zod (directly or via react-hook-form as the client layer) gives instant on-blur feedback; the Server Action re-validates with `safeParse` regardless.
+
 Field anatomy, in order: label (`text-sm font-medium`) → input (`h-9` desktop, `h-11` mobile for touch) → help text (optional, `text-xs text-muted-foreground`) → error text (conditional, `text-xs text-destructive`, replaces help text, tied via `aria-describedby`). Spacing: `space-y-4` between fields, `space-y-8` between groups, `space-y-1.5` inside a field.
 
-Validation patterns: client-side on blur (format checks) → client-side on submit (cross-field) → async on blur, debounced 300–500ms (uniqueness checks) → server-side on submit (anything the client can't know, mapped to the same inline slot).
+Validation patterns: client-side Zod on blur (format checks) → client-side on submit (cross-field) → async on blur, debounced 300–500ms (uniqueness checks) → server-side Zod `safeParse` in the Server Action (always, and for anything the client can't know), mapped back to the same inline slot via the `useActionState` state.
 
 Submit button states — never hide or replace the form body:
 
-| State | Button | Form |
-|---|---|---|
-| Idle | `Submit request` | Interactive |
-| Submitting | `+spinner`, `disabled` | Visible, readable |
-| Success | Back to idle, success toast | Reset or keep per flow |
-| Error | Back to idle, inline errors | **Every entered value preserved** |
+| State | Signal | Button | Form |
+|---|---|---|---|
+| Idle | `pending === false`, no errors in state | `Submit request` | Interactive |
+| Submitting | `useActionState` `pending === true` | `+spinner`, `disabled` | Visible, readable |
+| Success | Action returned success / redirected | Back to idle, success toast | Reset or keep per flow |
+| Error | Action returned `errors` in state | Back to idle, inline errors | **Every entered value preserved** — echo submitted values back through the action state into `defaultValue` |
 
 Show the spinner only if submission exceeds ~300ms (Global principle on debouncing indicators).
 
