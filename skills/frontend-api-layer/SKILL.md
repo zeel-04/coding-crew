@@ -10,11 +10,15 @@ lib/
 ├── client.ts                # server-only base layer — session token, base URL, Zod validation, error normalization
 ├── dal.ts                   # verifySession() — see the frontend-auth-and-state skill
 └── features/
-    └── departments/
-        ├── schema.ts        # departmentSchema, departmentUpdateSchema — Zod schemas only
-        ├── types.ts         # Department, DepartmentUpdate — z.infer types only
-        └── api.ts           # 'use server' — reads (getDepartment) AND mutation actions
-                             #   (updateDepartmentAction), all through apiFetch
+    ├── departments/
+    │   ├── schema.ts        # departmentSchema, departmentUpdateSchema — Zod schemas only
+    │   ├── types.ts         # Department, DepartmentUpdate — z.infer types only
+    │   └── api.ts           # 'use server' — reads (getDepartment) AND mutation actions
+    │                        #   (updateDepartmentAction), all through apiFetch
+    └── books/
+        ├── schema.ts        # bookSchema, bookUpdateSchema
+        ├── types.ts         # Book, BookUpdate
+        └── api.ts           # getBook, listBooks, updateBookAction — same shape as departments
 app/
 └── departments/
     ├── page.tsx             # Server Component — awaits lib/features/departments/api.ts directly

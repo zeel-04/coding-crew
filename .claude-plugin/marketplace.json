@@ -10,7 +10,7 @@
       "source": "./",
       "displayName": "Coding Crew",
       "description": "A collection of coding skills for project structure, testing, API layers, and design workflows.",
-      "version": "1.1.0",
+      "version": "1.0.1",
       "author": {
         "name": "Zeel Thumar"
       },

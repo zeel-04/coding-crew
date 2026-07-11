@@ -7,6 +7,8 @@ Auth is enforced where data is read, not where routes are rendered. `verifySessi
 
 ## Data Access Layer
 
+This naming and pattern intentionally mirror Next.js's own recommended [Data Access Layer](https://nextjs.org/docs/app/guides/data-security#data-access-layer) — centralize authorization in server-only functions, close to the data, rather than in middleware or page guards.
+
 `lib/dal.ts` owns `verifySession()` — the authoritative session check, assuming NextAuth v4 as an Authentik OIDC client. `import 'server-only'` keeps it out of client bundles; React `cache()` dedupes it to one session read per request no matter how many callers.
 
 ```ts
