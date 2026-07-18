@@ -25,7 +25,7 @@ api/
     ├── serializers/        # per-action Input/Output serializers, one file per entity — [[django-apis]]
     ├── urls.py             # Router-registered ViewSets — [[django-apis]]
     ├── schema.py           # internal DTOs (see below)
-    ├── types.py            # type aliases, Literal, TypedDict, Enum (see below)
+    ├── types.py            # type aliases, Literal, TypedDict, non-DB Enum (see below)
     ├── exceptions.py       # app-specific ApplicationError subclasses — [[django-errors]]
     └── utils.py            # app-scoped helper functions
 ```
@@ -76,17 +76,17 @@ This is distinct from DRF serializers, which live in `serializers/` in the API l
 
 ## types.py — app-scoped type vocabulary
 
-Type aliases, `Literal`, `TypedDict`, and `Enum` definitions used across the app. Keeps annotations readable and gives shared shapes one home.
+Type aliases, `Literal`, `TypedDict`, and `Enum` definitions used across the app. Keeps annotations readable and gives shared shapes one home. `Enum` here is only for value sets **never stored in a model field** — a DB-stored set (a `role`, a `status`) belongs in a `models.TextChoices` in `models.py`, see [[django-models]].
 
 ```python
 from enum import Enum
 from typing import Literal, TypedDict
 
-Status = Literal["pending", "active", "closed"]
+SortOrder = Literal["asc", "desc"]
 
-class Role(Enum):
-    ADMIN = "admin"
-    MEMBER = "member"
+class ExportFormat(Enum):
+    CSV = "csv"
+    XLSX = "xlsx"
 
 class Money(TypedDict):
     amount: int
