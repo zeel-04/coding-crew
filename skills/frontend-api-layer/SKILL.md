@@ -42,7 +42,7 @@ export const departmentUpdateSchema = departmentSchema.omit({ id: true }).partia
 
 ## Types
 
-One file per feature in `lib/features/<feature>/types.ts` — every type derived from the sibling `schema.ts` via `z.infer`, named after the domain concept rather than the schema. Keeping this separate from `schema.ts` means a component that only needs the TS shape (e.g. to type a prop) imports `types.ts` and never drags in the Zod runtime — only server code that actually validates imports `schema.ts`.
+One file per feature in `lib/features/<feature>/types.ts` — types derived from the sibling `schema.ts` via `z.infer`, named after the domain concept rather than the schema, plus any plain const value objects for fixed value sets (see below). No Zod runtime ever lands here. Keeping this separate from `schema.ts` means a component that only needs the TS shape (e.g. to type a prop) imports `types.ts` and never drags in the Zod runtime — only server code that actually validates imports `schema.ts`.
 
 ```ts
 // lib/features/departments/types.ts
@@ -52,6 +52,27 @@ import type { departmentSchema, departmentUpdateSchema } from './schema'
 export type Department = z.infer<typeof departmentSchema>
 export type DepartmentUpdate = z.infer<typeof departmentUpdateSchema>
 ```
+
+### Enums / fixed value sets
+
+When a field is one of a fixed set of values (a `role` of `OWNER` or `MEMBER`, a `status`), define a **const object plus a derived union** in `types.ts` — never the TS `enum` keyword, and never scatter the same string literals across components. The const object is a plain value (no Zod runtime), so it lives here alongside the types, and `schema.ts` derives its validator from it. Keep the string values identical to the backend `TextChoices` values — these are exactly what the API sends and receives.
+
+```ts
+// lib/features/departments/types.ts
+export const Role = { OWNER: 'OWNER', MEMBER: 'MEMBER' } as const
+export type Role = (typeof Role)[keyof typeof Role]
+```
+
+```ts
+// lib/features/departments/schema.ts
+import { Role } from './types'
+
+export const memberSchema = z.object({
+  role: z.enum(Object.values(Role) as [Role, ...Role[]]),
+})
+```
+
+Components import `Role` from `types.ts` for both the value (e.g. `Role.OWNER`) and the type — one source, no duplicated literals.
 
 ## Server-only base client
 

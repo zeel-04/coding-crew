@@ -55,6 +55,55 @@ class CourseCreateService:
         return obj
 ```
 
+## Choices / enums
+
+When several constants belong to one concept — a `role` that is `OWNER` or `MEMBER`, a `status` that is one of a fixed set — never scatter loose module-level constants. Group them.
+
+| The value set is | Where |
+| --- | --- |
+| Stored in a model field | `models.TextChoices` in `models.py`, used as `choices=` on the field |
+| Not stored in the DB (internal flags, config keys) | plain `enum.Enum` in `types.py` — see [[django-structure]] |
+
+`TextChoices` gives you `.choices`, `.labels`, and `.values` for free, and the human label lives beside the value.
+
+```python
+class Role(models.TextChoices):
+    OWNER = "OWNER", "Owner"
+    MEMBER = "MEMBER", "Member"
+
+
+class Membership(BaseModel):
+    role = models.CharField(max_length=16, choices=Role.choices, default=Role.MEMBER)
+```
+
+## Indexing
+
+Add an index only when a real query needs it — every index taxes each insert and update.
+
+| Scenario | Index |
+| --- | --- |
+| Column used in a frequent `WHERE` with `=` (exact match) | Single-column index (`db_index=True` or `Meta.indexes`) |
+| Column used with `ILIKE 'term%'` (prefix search) | Single-column index — helps prefix patterns only |
+| A frequent query filters several columns **together** | One composite index over those columns, not separate single-column ones |
+| A column drives a frequent `ORDER BY`, often alongside a filter | Put the sort column last in the index covering that filter |
+| Foreign-key fields | Already indexed by Django — don't re-add |
+
+**Composite ordering:** equality-filtered columns first, then range/sort columns. A composite index follows the leftmost-prefix rule — an index on `(a, b)` serves `WHERE a=...` (and `WHERE a=... AND b=...`), but **not** `WHERE b=...` alone.
+
+**`ILIKE '%term%'` caveat:** a leading wildcard defeats a b-tree index entirely. Keep indexed searches prefix-only; if genuine substring search is a requirement, reach for a `pg_trgm` GIN index rather than pretending a plain index helps.
+
+Don't index rarely-queried columns, tiny tables, or write-heavy columns whose reads are incidental.
+
+```python
+class Membership(BaseModel):
+    status = models.CharField(max_length=16)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="membership_status_created_idx"),
+        ]
+```
+
 ## Properties and methods
 
 | Add to the model when | Move to a service/selector when |
