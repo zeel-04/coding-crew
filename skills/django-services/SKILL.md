@@ -59,23 +59,6 @@ class FileDirectUploadService:
 - **Side effects run after commit.** Anything non-DB — sending email, dispatching a Celery task, calling an external API — must go through `transaction.on_commit(...)`. Called inline, it would fire even when the transaction later rolls back.
 - **Lock rows that race.** For read-modify-write on the same row (balances, counters), use `select_for_update()` inside the atomic block so concurrent writers serialize.
 
-```python
-class MembershipTransferService:
-    @transaction.atomic
-    def execute(self, *, membership: Membership, new_owner: User) -> Membership:
-        old_owner = Membership.objects.select_for_update().get(pk=membership.pk)
-        old_owner.role = Role.MEMBER
-        old_owner.full_clean()
-        old_owner.save()
-
-        new = Membership(user=new_owner, role=Role.OWNER)
-        new.full_clean()
-        new.save()
-
-        transaction.on_commit(lambda: notify_ownership_change.delay(new.pk))
-        return new
-```
-
 ## Selectors are function-based
 
 Selectors are the read-only counterpart to services. They live in `<app>/selectors.py` (a single flat file), stay type-annotated, and have no side effects.

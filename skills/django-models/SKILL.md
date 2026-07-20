@@ -57,7 +57,7 @@ class CourseCreateService:
 
 ## Choices / enums
 
-When several constants belong to one concept — a `role` that is `OWNER` or `MEMBER`, a `status` that is one of a fixed set — never scatter loose module-level constants. Group them.
+Group related constants under one concept (e.g. a `role` of `OWNER`/`MEMBER`) instead of scattering loose module-level constants.
 
 | The value set is | Where |
 | --- | --- |
