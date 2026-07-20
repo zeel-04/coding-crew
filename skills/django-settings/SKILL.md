@@ -67,8 +67,15 @@ Each remaining module owns one concern — its own Django settings plus any rela
 ```python
 # config/env.py
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 env = environ.Env()
+
+
+def validate_env(required: list[str]) -> None:
+    missing = [name for name in required if env(name, default=None) in (None, "")]
+    if missing:
+        raise ImproperlyConfigured(f"Missing required env vars: {', '.join(missing)}")
 ```
 
 ```python
@@ -77,6 +84,8 @@ from config.env import env
 
 MY_VAR = env("MY_VAR")
 ```
+
+`validate_env` collects **every** missing name before raising — so a fresh setup fails once with the full list, not one var at a time.
 
 Don't do this — it creates a second, isolated instance with no shared type coercions or defaults:
 
@@ -88,15 +97,28 @@ env = environ.Env()
 
 ## Adding a new settings module
 
-When adding a new integration, follow these three steps:
+When adding a new integration, follow these steps:
 
-1. Create `config/settings/<concern>.py` and read whatever env vars it needs via `from config.env import env`.
-2. Define the Django settings (and any third-party `init` call) inside that file.
+1. Create `config/settings/<concern>.py`. At the top, declare the concern's required vars and validate them **before reading**, so a missing var fails at startup rather than deep in a request:
+
+```python
+# config/settings/files_and_storages.py
+from config.env import env, validate_env
+
+REQUIRED_ENV_VARS = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_STORAGE_BUCKET_NAME"]
+validate_env(REQUIRED_ENV_VARS)
+
+AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID")
+```
+
+2. Define the remaining Django settings (and any third-party `init` call) inside that file.
 3. Add a wildcard import at the bottom of `django_configs.py`:
 
 ```python
 from config.settings.<concern> import *  # noqa
 ```
+
+Each concern owns its own `REQUIRED_ENV_VARS` list — validation stays next to the settings that need those vars, not in one central file.
 
 ## Environment variable naming
 
@@ -113,4 +135,5 @@ The rule of thumb: if the variable would only ever exist because Django is runni
 
 - **Don't create per-environment files** (`dev.py`, `prod.py`, `local.py`). That splits config across two axes — concern and environment — which compounds quickly. Use env vars for environment differences instead.
 - **Don't instantiate `environ.Env()` outside `config/env.py`**. Multiple instances won't share type coercions or defaults.
-- **Don't commit `.env`**. Commit `.env.example` with empty values so new developers can see which variables are required.
+- **Don't default a required var.** `env("X", default=...)` is only for genuinely optional settings. A var the app can't run without belongs in that concern's `REQUIRED_ENV_VARS`, not behind a default that silently masks its absence.
+- **Don't commit `.env`**. Keep `.env.example` in sync with `.env` and commit only the example, with empty values — every name in any `REQUIRED_ENV_VARS` list must appear there.

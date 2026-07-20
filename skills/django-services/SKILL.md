@@ -14,7 +14,7 @@ A service class:
 - Lives in `services/<entity>_services.py` (e.g. `services/employee_services.py`).
 - Takes shared dependencies in `__init__` when multiple methods need them.
 - Uses keyword-only arguments on public methods that take more than one input.
-- Wraps DB-writing methods in `@transaction.atomic`.
+- Wraps DB-writing methods in `@transaction.atomic` (see [Transactions](#transactions)).
 - Calls `full_clean()` immediately before `save()` (see [[django-models]] for why this lives here, not in the model).
 
 ## Naming convention
@@ -49,6 +49,15 @@ class FileDirectUploadService:
     @transaction.atomic
     def finish(self, *, file: File) -> File: ...
 ```
+
+## Transactions
+
+`@transaction.atomic` is **mandatory** when a service method performs **two or more writes** (insert/update/delete) that must succeed or fail as a unit. A single-write method may keep the decorator (harmless), but a multi-write method without it is a review failure — a partial failure would leave the DB half-updated.
+
+- **One boundary per user action.** The outermost `atomic` belongs on the public service method. Never open transactions in views or selectors.
+- **Nesting is fine.** When a service calls another service, Django turns the inner `atomic` block into a savepoint — don't manage savepoints by hand.
+- **Side effects run after commit.** Anything non-DB — sending email, dispatching a Celery task, calling an external API — must go through `transaction.on_commit(...)`. Called inline, it would fire even when the transaction later rolls back.
+- **Lock rows that race.** For read-modify-write on the same row (balances, counters), use `select_for_update()` inside the atomic block so concurrent writers serialize.
 
 ## Selectors are function-based
 
