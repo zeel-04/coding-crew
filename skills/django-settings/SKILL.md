@@ -136,4 +136,4 @@ The rule of thumb: if the variable would only ever exist because Django is runni
 - **Don't create per-environment files** (`dev.py`, `prod.py`, `local.py`). That splits config across two axes — concern and environment — which compounds quickly. Use env vars for environment differences instead.
 - **Don't instantiate `environ.Env()` outside `config/env.py`**. Multiple instances won't share type coercions or defaults.
 - **Don't default a required var.** `env("X", default=...)` is only for genuinely optional settings. A var the app can't run without belongs in that concern's `REQUIRED_ENV_VARS`, not behind a default that silently masks its absence.
-- **Don't commit `.env`**. Commit `.env.example` with empty values so new developers can see which variables are required — every name in any `REQUIRED_ENV_VARS` list must appear there.
+- **Don't commit `.env`**. Keep `.env.example` in sync with `.env` and commit only the example, with empty values — every name in any `REQUIRED_ENV_VARS` list must appear there.
