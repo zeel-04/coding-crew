@@ -13,7 +13,9 @@ RETRY_AFTER=$((7 * 24 * 60 * 60))
 # hook shell often doesn't inherit these on PATH.
 export PATH="$HOME/.local/bin:$HOME/Library/Python/bin:$HOME/bin:$PATH"
 
-mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
+# GNU first: BSD stat rejects -c cleanly (usage goes to stderr, no stdout), while
+# GNU stat treats "-f %m" as --file-system and prints a filesystem block to stdout.
+mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0; }
 
 # --- 1. Ensure the graphify CLI exists (in the background) ------------------
 if ! command -v graphify >/dev/null 2>&1; then
