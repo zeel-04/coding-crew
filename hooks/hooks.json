@@ -5,7 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/graphify-setup.sh",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/scripts/graphify-setup.mjs"],
             "statusMessage": "Preparing graphify knowledge graph…",
             "timeout": 60
           }
