@@ -7,6 +7,7 @@ GRAPHIFY_PIN="graphifyy==0.9.29"
 CACHE_DIR="$HOME/.cache/coding-crew"
 MARKER="$CACHE_DIR/graphify-install-failed"
 WARNED="$CACHE_DIR/graphify-install-warned"
+LOG="$CACHE_DIR/graphify.log"
 RETRY_AFTER=$((7 * 24 * 60 * 60))
 
 # User-level installs (uv tool, pipx, pip --user) land here but a non-interactive
@@ -33,17 +34,18 @@ if ! command -v graphify >/dev/null 2>&1; then
   fi
 
   mkdir -p "$CACHE_DIR"
+  echo "=== $(date '+%Y-%m-%d %H:%M:%S') installing $GRAPHIFY_PIN" >> "$LOG" 2>/dev/null
   nohup bash -c '
     export PATH="$HOME/.local/bin:$HOME/Library/Python/bin:$HOME/bin:$PATH"
-    if command -v uv >/dev/null 2>&1; then uv tool install "'"$GRAPHIFY_PIN"'" >/dev/null 2>&1; fi
+    if command -v uv >/dev/null 2>&1; then uv tool install "'"$GRAPHIFY_PIN"'"; fi
     if ! command -v graphify >/dev/null 2>&1 && command -v pipx >/dev/null 2>&1; then
-      pipx install "'"$GRAPHIFY_PIN"'" >/dev/null 2>&1
+      pipx install "'"$GRAPHIFY_PIN"'"
     fi
     if ! command -v graphify >/dev/null 2>&1 && command -v pip3 >/dev/null 2>&1; then
-      pip3 install --user "'"$GRAPHIFY_PIN"'" >/dev/null 2>&1
+      pip3 install --user "'"$GRAPHIFY_PIN"'"
     fi
     command -v graphify >/dev/null 2>&1 || touch "'"$MARKER"'"
-  ' >/dev/null 2>&1 &
+  ' >>"$LOG" 2>&1 &
 
   # The graph build needs the CLI; it runs on the next session start.
   exit 0
@@ -72,11 +74,19 @@ if [[ -f "$graph" ]]; then
     (( ref_ts > repo_ts )) && repo_ts=$ref_ts
   done
   (( graph_ts >= repo_ts )) && exit 0
-  build_cmd=(graphify . --update)
+  build_cmd=(graphify . --code-only --update)
 else
-  build_cmd=(graphify .)
+  build_cmd=(graphify . --code-only)
 fi
 
 # --- 4. Build in the background so the session never waits ------------------
-nohup "${build_cmd[@]}" >/dev/null 2>&1 &
+# --code-only keeps extraction on the local tree-sitter AST: no LLM API key
+# required (graphify errors out without one as soon as the repo contains docs
+# or images), and no source is sent to a third-party model without consent.
+# Output is logged so a silent background failure is diagnosable.
+mkdir -p "$CACHE_DIR"
+{
+  echo "=== $(date '+%Y-%m-%d %H:%M:%S') $(pwd) : ${build_cmd[*]}"
+} >> "$LOG" 2>/dev/null
+nohup "${build_cmd[@]}" >>"$LOG" 2>&1 &
 exit 0
