@@ -17,6 +17,10 @@
     "playwright": {
       "command": "npx",
       "args": ["@playwright/mcp@latest", "--headless"]
+    },
+    "postgres": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/scripts/postgres-mcp-launcher.mjs"]
     }
   }
 }
