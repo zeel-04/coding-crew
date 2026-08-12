@@ -1,46 +1,104 @@
 ---
 name: django-apis
-description: Use when creating, editing, or reviewing files in views/, serializers/, or urls.py. Enforces this project's API-layer conventions — thin ViewSets with no business logic, per-action serializers in serializers/<entity>_serializers.py, naming, and Router-based URL registration.
+description: Use when creating, editing, or reviewing files in views/, serializers/, or urls.py. Enforces this project's API-layer conventions — thin ViewSets with per-action try/except error handling and no business logic, per-action serializers in serializers/<entity>_serializers.py, the {message, data} response envelope, naming, and Router-based URL registration.
 ---
 
-APIs are a thin interface onto services and selectors. They parse input, fetch objects, call a service/selector, and serialize output — nothing else.
+APIs are a thin interface onto services and selectors. They parse input, fetch objects, call a service/selector, serialize output, and map errors to responses via the standard try/except ladder — nothing else.
 
 ## Views
 
 - One `ViewSet` per resource. Actions (`list`, `create`, `retrieve`, `update`, `destroy`) are explicit methods on the class.
 - Inherit from plain `ViewSet`, not `ModelViewSet` or `GenericViewSet` — those pull behavior into `serializer_class`, and business behavior belongs in services/selectors.
 - **No business logic in the view.** If parsing gets non-trivial, extract a small helper near the ViewSet — don't let it grow into logic.
+- **Every action wraps its whole body in try/except.** The ladder is response plumbing, not business logic. Arm order, error shapes, and logging rules: [[django-errors]].
 
 Naming: `<Entity>ViewSet` — e.g. `CourseViewSet`.
 
 ```python
-from rest_framework import status
+import traceback
+
+from loguru import logger
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
-from .selectors import course_list
-from .serializers.course_serializers import (
+from core.exceptions import ApplicationError
+
+from ..models import Course
+from ..serializers.course_serializers import (
     CourseCreateInputSerializer,
-    CourseListFilterSerializer,
-    CourseListOutputSerializer,
+    CourseCreateOutputSerializer,
+    CourseDetailOutputSerializer,
 )
-from .services.course_services import CourseCreateService
+from ..services.course_services import CourseCreateService
 
 class CourseViewSet(SomeAuthenticationMixin, ViewSet):
-    def list(self, request):
-        filter_serializer = CourseListFilterSerializer(data=request.query_params)
-        filter_serializer.is_valid(raise_exception=True)
-
-        courses = course_list(filters=filter_serializer.validated_data)
-        return Response(CourseListOutputSerializer(courses, many=True).data)
-
     def create(self, request):
-        serializer = CourseCreateInputSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer = CourseCreateInputSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
 
-        CourseCreateService().execute(**serializer.validated_data)
-        return Response(status=status.HTTP_201_CREATED)
+            course = CourseCreateService().execute(**serializer.validated_data)
+            return Response(
+                {
+                    "message": "Course created successfully.",
+                    "data": CourseCreateOutputSerializer(course).data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        except serializers.ValidationError:
+            return Response(
+                {"message": "Validation error.", "extra": {"fields": serializer.errors}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ApplicationError as e:
+            return Response(
+                {"message": e.message, "extra": e.extra},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            logger.error(f"Error creating course: {e}\n{traceback.format_exc()}")
+            return Response(
+                {"message": "An unexpected error occurred.", "extra": {}},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    def retrieve(self, request, pk):
+        try:
+            course = Course.objects.filter(
+                id=pk, organization=request.organization
+            ).first()
+            if not course:
+                return Response(
+                    {"message": "Course not found.", "extra": {}},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            return Response(
+                {
+                    "message": "Course retrieved successfully.",
+                    "data": CourseDetailOutputSerializer(course).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            logger.error(f"Error retrieving course: {e}\n{traceback.format_exc()}")
+            return Response(
+                {"message": "An unexpected error occurred.", "extra": {}},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 ```
+
+`list` follows the same shape — a `FilterSerializer` over `request.query_params` inside the `try`, a selector call, and `data` as a `many=True` OutputSerializer payload.
+
+## Responses
+
+- Every success response uses the envelope `{"message": ..., "data": ...}`.
+- `message` is a short past-tense confirmation — "Course created successfully.", "File uploaded successfully."
+- `data` is the OutputSerializer payload — an object, or a list for `list` actions. Omit it when there is nothing to return.
+- `200` for reads and updates, `201` for creates.
+
+Errors use the separate `{message, extra}` contract — shapes and status codes: [[django-errors]].
 
 ## Serializers
 
@@ -71,17 +129,20 @@ class CourseCreateInputSerializer(serializers.Serializer):
 
 ## Fetching objects
 
-Default: fetch the object at the ViewSet level (not inside the service/selector) using a small `get_object` helper that turns `Http404` into `None`:
+Fetch the object at the ViewSet level (not inside the service/selector), inside the `try` block, and return an explicit `404` on a miss:
 
 ```python
-def get_object(model_or_queryset, **kwargs):
-    try:
-        return get_object_or_404(model_or_queryset, **kwargs)
-    except Http404:
-        return None
+course = Course.objects.filter(id=pk, organization=request.organization).first()
+if not course:
+    return Response(
+        {"message": "Course not found.", "extra": {}},
+        status=status.HTTP_404_NOT_FOUND,
+    )
 ```
 
-Pick one approach per project (ViewSet fetches and passes the object, vs. service/selector fetches by id) and stay consistent — don't mix both within the same app.
+- Never use `get_object_or_404` or raise `Http404` in an action — the catch-all arm would turn a missing object into a `500`.
+- Scope the filter to the caller's tenancy, so a foreign id is indistinguishable from a missing one and can't be probed.
+- Pass the fetched object into the service/selector; don't have it re-fetch by id.
 
 ## URLs
 

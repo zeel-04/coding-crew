@@ -35,7 +35,7 @@ Each `.json` file is an array of case objects:
   "payload":         { "title": "Review documents", "process_id": 1 },
   "query_params":    {},
   "expected_status": 201,
-  "expected_body":   { "title": "Review documents", "status": "pending" }
+  "expected_body":   { "message": "Task created successfully." }
 }
 ```
 
@@ -73,9 +73,11 @@ Add a `403` RBAC case only if the endpoint actually enforces role-based access �
 - **Body**: `expected_body` is a **subset match** — only the declared keys are checked. Don't list every response field; list only what the case is testing. This keeps tests stable when the API adds new response fields.
 - Set `expected_body: null` to skip the body check entirely (e.g. `204 No Content`).
 
+Responses use the `{message, data}` envelope ([[django-apis]]), so `expected_body` keys are the envelope's top-level keys:
+
 ```json
-// Only "status" is asserted — created_at, updated_at, etc. are ignored.
-"expected_body": { "status": "completed" }
+// Only "message" is asserted — everything under "data" is ignored.
+"expected_body": { "message": "Task completed successfully." }
 ```
 
 ## Runner (already implemented once per project)
