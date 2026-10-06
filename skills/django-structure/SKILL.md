@@ -3,7 +3,7 @@ name: django-structure
 description: Use when scaffolding a new Django app, deciding where a piece of code belongs, or reviewing an app's file layout. Defines this project's app structure — what each file owns, the folder conventions for views/, serializers/, and services/, and the conventions for schema.py, types.py, and permissions.py.
 ---
 
-Every Django app follows the same layout. This skill is the map; the per-layer rules live in [[django-models]], [[django-services]], [[django-apis]], [[django-errors]], and [[django-testing]]. For the project-level `config/` settings folder, see [[django-settings]].
+Every Django app follows the same layout. This skill is the map; the per-layer rules live in [[django-models]], [[django-services]], [[django-apis]], [[django-errors]], and [[data-driven-testing]]. For the project-level `config/` settings folder, see [[django-settings]].
 
 ## App layout
 
@@ -14,7 +14,7 @@ api/
 ├── permissions.py         # shared, project-wide DRF permission classes (see below)
 └── <app>/
     ├── migrations/
-    ├── tests/              # see [[django-testing]] for the data-driven API testing standard
+    ├── tests/              # see [[data-driven-testing]] for the data-driven testing standard
     ├── __init__.py
     ├── admin.py
     ├── apps.py
